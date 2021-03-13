@@ -125,6 +125,7 @@ def app():
         query = "select distinct sector from companies"
         result = pd.read_sql(query, con=db_connection)
         #print(result)
+        global sector
         sector=st.selectbox("Select the Sector", result.stack().tolist())
         globals.sector=sector
         #st.write(globals.selected)
@@ -146,7 +147,7 @@ def app():
         query = "select distinct Symbol from companies where Sector='" + globals.sector + "'"
         result = pd.read_sql(query, con=db_connection)
         st.subheader("Insert Into Portfolio :shopping_bags:")
-        symbol_ = st.selectbox("Select the Sector", result.stack().tolist())
+        symbol_ = st.selectbox("Select the "+sector+"'s Company", result.stack().tolist())
         st.write("Do you want to insert `"+symbol_+"` in your Portfolio")
         if st.button("Insert"):
             st.markdown(":robot_face: We are adding " + symbol_ + " to your portfolio :robot_face:")
