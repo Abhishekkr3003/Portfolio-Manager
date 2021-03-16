@@ -18,20 +18,32 @@ from keras.models import load_model
 from mysql.connector import Error
 import globals
 import pathlib
+from yahoo_fin import stock_info as si
 
 
-@st.cache(allow_output_mutation=True)
 def PredictorModel(sector_):
-    sector=sector_
+    st.set_option('deprecation.showPyplotGlobalUse', False)
+    cols = ['Symbol', 'Predictions']
+    df2 = pd.DataFrame(columns=cols)
+    sector = sector_
     db_connection = msql.connect(host='portfoliomanagement.c5r1ohijcswm.ap-south-1.rds.amazonaws.com',
                                 database='portfolioManagement', user='admin', password='syseng1234')
     query = "SELECT Symbol from companies WHERE Sector='" + sector + "'"
-    sectorWiseCompanies = pd.read_sql(query, con=db_connection)
-
-    for ind in sectorWiseCompanies.index:
+    symbol_ = pd.read_sql(query, con=db_connection)
+    ################################################
+    # Create the title 'Portfolio Adj Close Price History
+    title = 'Portfolio Adj. Close Price History    '  # Get the stocks
+    # my_stocks = df#Create and plot the graph
+    plt.figure(figsize=(
+    12.2, 4.5))  # width = 12.2in, height = 4.5# Loop through each stock and plot the Adj Close for each day
+    ############################################
+    symbols = symbol_['Symbol'].tolist()
+    print(symbols)
+    for symbol in symbols:
+        print(symbol)
         db_connection = msql.connect(host='portfoliomanagement.c5r1ohijcswm.ap-south-1.rds.amazonaws.com',
                                     database='portfolioManagement', user='admin', password='syseng1234')
-        query = "SELECT * from companyDateWise WHERE Symbol='" + sectorWiseCompanies['Symbol'][ind] + "'"
+        query = "SELECT * from companyDateWise WHERE Symbol='" + symbol + "'"
         eachCompany = pd.read_sql(query, con=db_connection)
         data = eachCompany.filter(['Close'])
         # Converting the dataframe to a numpy array
@@ -42,14 +54,14 @@ def PredictorModel(sector_):
         # Scale the all of the data to be values between 0 and 1
         scaler = MinMaxScaler(feature_range=(0, 1))
         scaled_data = scaler.fit_transform(dataset)
-        file = pathlib.Path('models/' + sectorWiseCompanies['Symbol'][ind] + '.model/saved_model.pb')
-
-        if not file.exists ():
-            print('models/'+sectorWiseCompanies['Symbol'][ind] + '.model'+ "NOT FOUND**************************")
+        file = pathlib.Path('models/' + symbol + '.model/saved_model.pb')
+        if not file.exists():
+            print('models/' + symbol + '.model' + "NOT FOUND")
         else:
-            print('models/' + sectorWiseCompanies['Symbol'][ind] + '.model' + "FOUND**************************")
-        if not file.exists ():
-            # Create the scaled training data set
+            print('models/' + symbol + "FOUND")
+        # Create the scaled training data set
+        if not file.exists():
+        # Create the scaled training data set
             train_data = scaled_data[0:training_data_len, :]
             x_train = []
             y_train = []
@@ -57,8 +69,6 @@ def PredictorModel(sector_):
                 x_train.append(train_data[i - 30:i, 0])
                 y_train.append(train_data[i, 0])
 
-            #print("x-train: ", x_train)
-            #print("y-train: ", y_train)
             # Convert x_train and y_train to numpy arrays
             x_train, y_train = np.array(x_train), np.array(y_train)
 
@@ -75,27 +85,15 @@ def PredictorModel(sector_):
             model.compile(optimizer='adam', loss='mean_squared_error')
 
             # Train the model
-            model.fit(x_train, y_train, batch_size=50, epochs=10)
-            model.save('models/'+sectorWiseCompanies['Symbol'][ind] + '.model')
-    df2 = pd.DataFrame(columns=['Symbol'])
-    selected_columns = sectorWiseCompanies["Symbol"]
-    sectorWiseCompanies.columns = df2.columns.tolist()
-    df2 = df2.append(sectorWiseCompanies)
+            model.fit(x_train, y_train, batch_size=50, epochs=100)
+            model.save('models/'+symbol + '.model')
 
-    ## OR
-
-    # df2 = pd.concat([sectorWiseCompanies, df2])
-
-    sLength = len(df2['Symbol'])
-    df2['Predictions'] = pd.Series(np.random.randn(sLength), index=df2.index)
-
-    for ind in sectorWiseCompanies.index:
         db_connection = msql.connect(host='portfoliomanagement.c5r1ohijcswm.ap-south-1.rds.amazonaws.com',
                                     database='portfolioManagement', user='admin', password='syseng1234')
-        query = "SELECT * from companyDateWise WHERE Symbol='" + sectorWiseCompanies['Symbol'][ind] + "'"
+        query = "SELECT * from companyDateWise WHERE Symbol='" + symbol + "'"
         eachCompany = pd.read_sql(query, con=db_connection)
         new_df = eachCompany.filter(['Close'])
-        loaded_model = load_model('models/'+sectorWiseCompanies['Symbol'][ind] + '.model')
+        loaded_model = load_model('models/'+symbol + '.model')
         last_30_days = new_df[-30:].values
         # Scale the data to be values between 0 and 1
         last_30_days_scaled = scaler.transform(last_30_days)
@@ -111,9 +109,21 @@ def PredictorModel(sector_):
         pred_price = loaded_model.predict(X_test)
         # undo the scaling
         pred_price = scaler.inverse_transform(pred_price)
-        df2['Predictions'][ind] = pred_price
-    #print(df2)
-    #df2.set_index('Symbol', inplace=True)
+        predRes = pred_price.item(0)
+        df2 = df2.append({'Symbol': symbol, 'Predictions': predRes}, ignore_index=True, )
+        print("Tomorrows predicted price for " + symbol + " is ", predRes)
+        plt.plot(data, label=data)
+    print(df2)
+    col_one_list = df2['Symbol'].tolist()
+    print(col_one_list)
+    plt.xlabel('Day', fontsize=18)
+    plt.ylabel('Adj. Price INR (Rs.)', fontsize=18)
+    plt.legend(col_one_list, bbox_to_anchor=(1.05, 1), loc='upper left')
+    #plt.show()
+    st.table(df2)
+    st.write("Past 1 year treands:")
+    st.pyplot()
+
     return df2
 
 
@@ -131,7 +141,7 @@ def app():
         #st.write(globals.selected)
         if st.button("Predict Tommorow's Price of "+sector):
             dataf=PredictorModel(sector)
-            st.table(dataf)
+
             globals.df2=dataf
             if 'Symbol' in globals.df2.columns:
                 globals.df2.set_index('Symbol', inplace=True)
@@ -148,7 +158,15 @@ def app():
         result = pd.read_sql(query, con=db_connection)
         st.subheader("Insert Into Portfolio :shopping_bags:")
         symbol_ = st.selectbox("Select the "+sector+"'s Company", result.stack().tolist())
-        st.write("Do you want to insert `"+symbol_+"` in your Portfolio")
+        quantity = st.number_input("Enter The Quantity", value=1, min_value=1)
+
+        query = "select Close from companyDateWise where Symbol='"+symbol_+"' and Date=(SELECT MAX(Date) FROM companyDateWise WHERE Symbol='"+symbol_+"')"
+        resdf = pd.read_sql(query, con=db_connection)
+        lastClose=resdf.at[0,'Close']
+        netPofit=(globals.df2._get_value(symbol_, 'Predictions')-lastClose)*quantity
+        totalCost=lastClose*quantity
+        pred=round(globals.df2._get_value(symbol_, 'Predictions'))
+        st.write("Do you want to add `" + str(quantity) + "` of  `" + symbol_ + "` at Current Price `Rs "+str(lastClose)+"` and Predicted Price `Rs "+str(pred)+"` in your Portfolio")
         if st.button("Insert"):
             st.markdown(":robot_face: We are adding " + symbol_ + " to your portfolio :robot_face:")
             try:
@@ -160,9 +178,9 @@ def app():
                     cursor.execute("select database();")
                     record = cursor.fetchone()
                     print("You're connected to database: ", record)
-                    sql = "INSERT INTO portfolio VALUES (%s,%s,%s,%s)"
-                    print(login.usr, symbol_, globals.df2._get_value(symbol_, 'Predictions') , date.today())
-                    cursor.execute(sql, (login.usr, symbol_, str(globals.df2._get_value(symbol_, 'Predictions')) , date.today()))
+                    sql = "INSERT INTO portfolio VALUES (%s,%s,%s,%s,%s,%s,%s)"
+                    print(login.usr, symbol_, globals.df2._get_value(symbol_, 'Predictions') , date.today(), quantity, netPofit, totalCost)
+                    cursor.execute(sql, (login.usr, symbol_, str(globals.df2._get_value(symbol_, 'Predictions')) , date.today(), str(quantity), str(netPofit), str(totalCost)))
                     print("Record inserted")
                     #st.balloons()
                     db_connection.commit()
@@ -170,9 +188,21 @@ def app():
 
             except Error as e:
                 print(e)
-                st.error("0ops! "+symbol_+" Already in your database")
+                st.error("0ops! "+symbol_+" is already in your portfolio")
+
         A,B,C =st.beta_columns(3)
         if A.button("See All Sectors"):
             globals.selected -= 1
             B.markdown(":arrow_right: :arrow_right: :arrow_right: :arrow_right: :arrow_right: :arrow_right:")
             C.button("Press Here")
+        st.subheader("More Details of `" + symbol_ + "` :information_source:")
+        query = "select * from companies where Symbol='" + symbol_ + "'"
+        resdf = pd.read_sql(query, con=db_connection)
+        st.write("Company's Name: `" + str(resdf.iloc[0]['Company_Name']) + "`")
+        st.write("Sector: `" + str(resdf.iloc[0]['Sector']) + "`")
+        st.write("Series: `" + str(resdf.iloc[0]['Series']) + "`")
+        st.write("ISIN Code: `" + str(resdf.iloc[0]['ISIN_Code']) + "`")
+        details = si.get_stats(symbol_ + ".NS")
+        details_new = details.rename(columns={'Attribute': 'Info'})
+        details_new.dropna(inplace=True)
+        st.table(details_new)

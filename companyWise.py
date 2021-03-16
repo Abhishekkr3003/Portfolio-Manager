@@ -19,15 +19,15 @@ from keras.models import load_model
 import globals
 import pathlib
 from mysql.connector import Error
-#print(find_files("smpl.htm","D:"))
+import requests
+import pandas as pd
+from yahoo_fin import stock_info as si
+from pandas_datareader import DataReader
+import numpy as np
 
-@st.cache
+#@st.cache
 def PredictorModel(symbol_):
-
-    from datetime import date
-
     symbol =symbol_
-
     db_connection = msql.connect(host='portfoliomanagement.c5r1ohijcswm.ap-south-1.rds.amazonaws.com',
                                 database='portfolioManagement', user='admin', password='syseng1234')
     query = "SELECT * from companyDateWise WHERE Symbol='" + symbol + "'"
@@ -71,15 +71,9 @@ def PredictorModel(symbol_):
         model.compile(optimizer='adam', loss='mean_squared_error')
 
         # Train the model
-        model.fit(x_train, y_train, batch_size=50, epochs=10)
+        model.fit(x_train, y_train, batch_size=50, epochs=100)
         model.save('models/'+symbol + '.model')
 
-
-    df2 = pd.DataFrame(columns=['Symbol'])
-
-
-    sLength = len(df2['Symbol'])
-    df2['Predictions'] = pd.Series(np.random.randn(sLength), index=df2.index)
 
     db_connection = msql.connect(host='portfoliomanagement.c5r1ohijcswm.ap-south-1.rds.amazonaws.com',
                                 database='portfolioManagement', user='admin', password='syseng1234')
@@ -103,40 +97,112 @@ def PredictorModel(symbol_):
     # undo the scaling
     pred_price = scaler.inverse_transform(pred_price)
     predRes = pred_price.item(0)
+    loaded_model2 = load_model('models/' + symbol + '.model')
+    test_data = scaled_data[training_data_len - 30:, :]
+
+    # Create the x_test and y_test data sets
+    x_test = []
+    y_test = dataset[training_data_len:,
+             :]  # Get all of the rows from index 1603 to the rest and all of the columns (in this case it's only column 'Close'), so 2003 - 1603 = 400 rows of data
+    for i in range(30, len(test_data)):
+        x_test.append(test_data[i - 30:i, 0])
+
+    # Convert x_test to a numpy array
+    x_test = np.array(x_test)
+
+    # Reshape the data into the shape accepted by the LSTM
+    x_test = np.reshape(x_test, (x_test.shape[0], x_test.shape[1], 1))
+
+    # #Getting the models predicted price values
+    predictions = loaded_model2.predict(x_test)
+    predictions = scaler.inverse_transform(predictions)
+    train = data[:training_data_len]
+    valid = data[training_data_len:]
+    valid['Predictions'] = predictions
+
+    # Visualize the data
+    plt.figure(figsize=(16, 8))
+    plt.title(symbol_)
+    plt.xlabel('Days', fontsize=18)
+    plt.ylabel('Close Price', fontsize=18)
+    plt.plot(train['Close'])
+    plt.plot(valid[['Close', 'Predictions']])
+    plt.legend(['Past Data', 'Actual', 'Predictions'], loc='lower right')
+    st.write("Tomorrows predicted price for " + symbol_ + " is ", predRes)
+    st.write("Past 1 year trends and Accurancy:")
+    st.pyplot()
     return predRes
 
 def app():
-    st.header("Company Wise Prediction")
-    db_connection = msql.connect(host='portfoliomanagement.c5r1ohijcswm.ap-south-1.rds.amazonaws.com',
-                                database='portfolioManagement', user='admin', password='syseng1234')
-    query = "select distinct Symbol from companies"
-    result = pd.read_sql(query, con=db_connection)
-    globals.symbol_=st.selectbox("Select the Sector", result.stack().tolist())
-    print("OutsideBlock")
-    if st.button("Predict And Add "+globals.symbol_+" To My Portfolio"):
-        print("insideBlock")
-        globals.predRes=PredictorModel(globals.symbol_)
-        st.write("Tomorrows predicted price for " + globals.symbol_ + " is ", globals.predRes)
-        st.markdown(":robot_face: We are adding "+globals.symbol_+" to your portfolio :robot_face:")
-        try:
-            db_connection = msql.connect(host='portfoliomanagement.c5r1ohijcswm.ap-south-1.rds.amazonaws.com',
-                                         database='portfolioManagement', user='admin', password='syseng1234')
-            if db_connection.is_connected():
-                print("Clicked")
-                cursor = db_connection.cursor()
-                cursor.execute("select database();")
-                record = cursor.fetchone()
-                print("You're connected to database: ", record)
-                sql = "INSERT INTO portfolio VALUES (%s,%s,%s,%s)"
-                cursor.execute(sql, (login.usr, globals.symbol_, globals.predRes, date.today()))
-                print("Record inserted")
-                st.balloons()
-                db_connection.commit()
-                st.success(globals.symbol_ + " successfully added to your portfolio")
-        except Error as e:
-            st.error("0ops! "+globals.symbol_+" Already in your database")
-    if st.button("Tommorow's Expected Price Of "+globals.symbol_):
-        globals.predRes = PredictorModel(globals.symbol_)
-        st.write("Tomorrows predicted price for " + globals.symbol_ + " is ", globals.predRes)
-    st.button("Reset")
-    print("After block")
+    if globals.selected2==-1:
+        st.header("Company Wise Prediction")
+        db_connection = msql.connect(host='portfoliomanagement.c5r1ohijcswm.ap-south-1.rds.amazonaws.com',
+                                    database='portfolioManagement', user='admin', password='syseng1234')
+        query = "select distinct Symbol from companies"
+        result = pd.read_sql(query, con=db_connection)
+        globals.symbol_=st.selectbox("Select the Company", result.stack().tolist())
+        print("OutsideBlock")
+        if st.button("Predict For "+globals.symbol_):
+            globals.predRes = PredictorModel(globals.symbol_)
+            #st.write("Tomorrows predicted price for " + globals.symbol_ + " is ", globals.predRes)
+            globals.selected2 = 0
+            st.button("Next")
+    else:
+
+        db_connection = msql.connect(host='portfoliomanagement.c5r1ohijcswm.ap-south-1.rds.amazonaws.com',
+                                     database='portfolioManagement', user='admin', password='syseng1234')
+        st.subheader("Insert Into Portfolio :shopping_bags:")
+        symbol_=globals.symbol_
+        quantity = st.number_input("Enter The Quantity", value=1, min_value=1)
+        query = "select Close from companyDateWise where Symbol='" + symbol_ + "' and Date=(SELECT MAX(Date) FROM companyDateWise WHERE Symbol='" + symbol_ + "')"
+        resdf = pd.read_sql(query, con=db_connection)
+        lastClose = resdf.at[0, 'Close']
+        netPofit = (globals.predRes - lastClose) * quantity
+        totalCost = lastClose * quantity
+        pred = round(globals.predRes,2)
+        st.write("Do you want to add `" + str(quantity) + "` of  `" + symbol_ + "` at Current Price `Rs " + str(
+            lastClose) + "` and Predicted Price `Rs " + str(pred) + "` in your Portfolio")
+        if st.button("Insert"):
+            st.markdown(":robot_face: We are adding " + symbol_ + " to your portfolio :robot_face:")
+            try:
+                db_connection = msql.connect(host='portfoliomanagement.c5r1ohijcswm.ap-south-1.rds.amazonaws.com',
+                                             database='portfolioManagement', user='admin', password='syseng1234')
+                if db_connection.is_connected():
+                    print("Clicked")
+                    cursor = db_connection.cursor()
+                    cursor.execute("select database();")
+                    record = cursor.fetchone()
+                    print("You're connected to database: ", record)
+                    sql = "INSERT INTO portfolio VALUES (%s,%s,%s,%s,%s,%s,%s)"
+                    print(login.usr, symbol_, globals.predRes, date.today(), quantity,
+                          netPofit, totalCost)
+                    cursor.execute(sql, (
+                    login.usr, symbol_, str(globals.predRes), date.today(),
+                    str(quantity), str(netPofit), str(totalCost)))
+                    print("Record inserted")
+                    # st.balloons()
+                    db_connection.commit()
+                    st.success(symbol_ + " successfully added to your portfolio")
+                    globals.selected2 -= 1
+
+            except Error as e:
+                print(e)
+                st.error("0ops! " + symbol_ + " is already in your Portfolio")
+                globals.selected2 -= 1
+        A, B, C = st.beta_columns(3)
+        if A.button("Back"):
+            globals.selected2 -= 1
+            B.markdown(":arrow_right: :arrow_right: :arrow_right: :arrow_right: :arrow_right: :arrow_right:")
+            C.button("Press Here")
+
+        st.subheader("More Details of `"+globals.symbol_+"` :information_source:")
+        query = "select * from companies where Symbol='" + globals.symbol_ + "'"
+        resdf = pd.read_sql(query, con=db_connection)
+        st.write("Company's Name: `"+str(resdf.iloc[0]['Company_Name'])+"`")
+        st.write("Sector: `" + str(resdf.iloc[0]['Sector']) + "`")
+        st.write("Series: `" + str(resdf.iloc[0]['Series']) + "`")
+        st.write("ISIN Code: `" + str(resdf.iloc[0]['ISIN_Code']) + "`")
+        details = si.get_stats(globals.symbol_ + ".NS")
+        details_new = details.rename(columns={'Attribute': 'Info'})
+        details_new.dropna(inplace=True)
+        st.table(details_new)

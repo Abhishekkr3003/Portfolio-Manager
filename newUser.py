@@ -31,3 +31,4 @@ def app():
                 B.button("Go to Dashboard")
         except Error as e:
             print("Error while connecting to MySQL", e)
+            st.error("Oops! Username already exist")

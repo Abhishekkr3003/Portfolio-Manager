@@ -15,7 +15,7 @@ def print_hi():
         app.add_app("SignUp", newUser.app)
     else:
         app.add_app("Dashboard", dashboard.app)
-        app.add_app("Sector Wise Predictoin", sectorWise.app)
+        app.add_app("Sector Wise Prediction", sectorWise.app)
         app.add_app("Company Wise Prediction", companyWise.app)
         app.add_app("Logout", logout.app)
 
