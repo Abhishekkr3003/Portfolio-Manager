@@ -1,7 +1,5 @@
 from datetime import date
-
 import streamlit as st
-
 import dashboard
 import login
 import pandas as pd
@@ -134,6 +132,7 @@ def PredictorModel(symbol_):
     return predRes
 
 def app():
+    st.set_option('deprecation.showPyplotGlobalUse', False)
     if globals.selected2==-1:
         st.header("Company Wise Prediction")
         db_connection = msql.connect(host='portfoliomanagement.c5r1ohijcswm.ap-south-1.rds.amazonaws.com',
@@ -163,37 +162,43 @@ def app():
         st.write("Do you want to add `" + str(quantity) + "` of  `" + symbol_ + "` at Current Price `Rs " + str(
             lastClose) + "` and Predicted Price `Rs " + str(pred) + "` in your Portfolio")
         if st.button("Insert"):
-            st.markdown(":robot_face: We are adding " + symbol_ + " to your portfolio :robot_face:")
-            try:
-                db_connection = msql.connect(host='portfoliomanagement.c5r1ohijcswm.ap-south-1.rds.amazonaws.com',
-                                             database='portfolioManagement', user='admin', password='syseng1234')
-                if db_connection.is_connected():
-                    print("Clicked")
-                    cursor = db_connection.cursor()
-                    cursor.execute("select database();")
-                    record = cursor.fetchone()
-                    print("You're connected to database: ", record)
-                    sql = "INSERT INTO portfolio VALUES (%s,%s,%s,%s,%s,%s,%s)"
-                    print(login.usr, symbol_, globals.predRes, date.today(), quantity,
-                          netPofit, totalCost)
-                    cursor.execute(sql, (
-                    login.usr, symbol_, str(globals.predRes), date.today(),
-                    str(quantity), str(netPofit), str(totalCost)))
-                    print("Record inserted")
-                    # st.balloons()
-                    db_connection.commit()
-                    st.success(symbol_ + " successfully added to your portfolio")
-                    globals.selected2 -= 1
+            print(totalCost)
+            print(globals.ser)
+            print(globals.budget)
+            if totalCost + globals.ser > globals.budget:
+                st.error("Oops! You Are Exceeding The Budget")
+                st.write("`Quick Help:` You can increase the budget from dashboard.")
+            else:
+                st.markdown(":robot_face: We are adding " + symbol_ + " to your portfolio :robot_face:")
+                try:
+                    db_connection = msql.connect(host='portfoliomanagement.c5r1ohijcswm.ap-south-1.rds.amazonaws.com',
+                                                 database='portfolioManagement', user='admin', password='syseng1234')
+                    if db_connection.is_connected():
+                        print("Clicked")
+                        cursor = db_connection.cursor()
+                        cursor.execute("select database();")
+                        record = cursor.fetchone()
+                        print("You're connected to database: ", record)
+                        sql = "INSERT INTO portfolio VALUES (%s,%s,%s,%s,%s,%s,%s)"
+                        print(login.usr, symbol_, globals.predRes, date.today(), quantity,
+                              netPofit, totalCost)
+                        cursor.execute(sql, (
+                        login.usr, symbol_, str(globals.predRes), date.today(),
+                        str(quantity), str(netPofit), str(totalCost)))
+                        print("Record inserted")
+                        # st.balloons()
+                        db_connection.commit()
+                        st.success(symbol_ + " successfully added to your portfolio")
+                        #globals.selected2 -= 1
 
-            except Error as e:
-                print(e)
-                st.error("0ops! " + symbol_ + " is already in your Portfolio")
-                globals.selected2 -= 1
-        A, B, C = st.beta_columns(3)
+                except Error as e:
+                    print(e)
+                    st.error("0ops! " + symbol_ + " is already in your Portfolio")
+                    #globals.selected2 -= 1
+        A, C = st.beta_columns(2)
         if A.button("Back"):
             globals.selected2 -= 1
-            B.markdown(":arrow_right: :arrow_right: :arrow_right: :arrow_right: :arrow_right: :arrow_right:")
-            C.button("Press Here")
+            C.button("Refresh")
 
         st.subheader("More Details of `"+globals.symbol_+"` :information_source:")
         query = "select * from companies where Symbol='" + globals.symbol_ + "'"

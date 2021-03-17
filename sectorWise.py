@@ -121,7 +121,7 @@ def PredictorModel(sector_):
     plt.legend(col_one_list, bbox_to_anchor=(1.05, 1), loc='upper left')
     #plt.show()
     st.table(df2)
-    st.write("Past 1 year treands:")
+    st.write("Past 1 year trends:")
     st.pyplot()
 
     return df2
@@ -166,35 +166,38 @@ def app():
         netPofit=(globals.df2._get_value(symbol_, 'Predictions')-lastClose)*quantity
         totalCost=lastClose*quantity
         pred=round(globals.df2._get_value(symbol_, 'Predictions'))
-        st.write("Do you want to add `" + str(quantity) + "` of  `" + symbol_ + "` at Current Price `Rs "+str(lastClose)+"` and Predicted Price `Rs "+str(pred)+"` in your Portfolio")
+        st.write("Do you want to add `" + str(quantity) + "` of  `" + symbol_ + "` at Current Price `Rs "+str(lastClose)+"` and Predicted Price `Rs "+str(float(pred))+"` in your Portfolio")
         if st.button("Insert"):
-            st.markdown(":robot_face: We are adding " + symbol_ + " to your portfolio :robot_face:")
-            try:
-                db_connection = msql.connect(host='portfoliomanagement.c5r1ohijcswm.ap-south-1.rds.amazonaws.com',
-                                             database='portfolioManagement', user='admin', password='syseng1234')
-                if db_connection.is_connected():
-                    print("Clicked")
-                    cursor = db_connection.cursor()
-                    cursor.execute("select database();")
-                    record = cursor.fetchone()
-                    print("You're connected to database: ", record)
-                    sql = "INSERT INTO portfolio VALUES (%s,%s,%s,%s,%s,%s,%s)"
-                    print(login.usr, symbol_, globals.df2._get_value(symbol_, 'Predictions') , date.today(), quantity, netPofit, totalCost)
-                    cursor.execute(sql, (login.usr, symbol_, str(globals.df2._get_value(symbol_, 'Predictions')) , date.today(), str(quantity), str(netPofit), str(totalCost)))
-                    print("Record inserted")
-                    #st.balloons()
-                    db_connection.commit()
-                    st.success(symbol_ + " successfully added to your portfolio")
+            if totalCost + globals.ser > globals.budget:
+                st.error("Oops! You Are Exceeding The Budget")
+                st.write("`Quick Help:` You can increase the budget from dashboard.")
+            else:
+                st.markdown(":robot_face: We are adding " + symbol_ + " to your portfolio :robot_face:")
+                try:
+                    db_connection = msql.connect(host='portfoliomanagement.c5r1ohijcswm.ap-south-1.rds.amazonaws.com',
+                                                 database='portfolioManagement', user='admin', password='syseng1234')
+                    if db_connection.is_connected():
+                        print("Clicked")
+                        cursor = db_connection.cursor()
+                        cursor.execute("select database();")
+                        record = cursor.fetchone()
+                        print("You're connected to database: ", record)
+                        sql = "INSERT INTO portfolio VALUES (%s,%s,%s,%s,%s,%s,%s)"
+                        print(login.usr, symbol_, globals.df2._get_value(symbol_, 'Predictions') , date.today(), quantity, netPofit, totalCost)
+                        cursor.execute(sql, (login.usr, symbol_, str(globals.df2._get_value(symbol_, 'Predictions')) , date.today(), str(quantity), str(netPofit), str(totalCost)))
+                        print("Record inserted")
+                        #st.balloons()
+                        db_connection.commit()
+                        st.success(symbol_ + " successfully added to your portfolio")
 
-            except Error as e:
-                print(e)
-                st.error("0ops! "+symbol_+" is already in your portfolio")
+                except Error as e:
+                    print(e)
+                    st.error("0ops! "+symbol_+" Is Already In Your Portfolio")
 
-        A,B,C =st.beta_columns(3)
-        if A.button("See All Sectors"):
+        A,C =st.beta_columns(2)
+        if A.button("Back"):
             globals.selected -= 1
-            B.markdown(":arrow_right: :arrow_right: :arrow_right: :arrow_right: :arrow_right: :arrow_right:")
-            C.button("Press Here")
+            C.button("Refresh")
         st.subheader("More Details of `" + symbol_ + "` :information_source:")
         query = "select * from companies where Symbol='" + symbol_ + "'"
         resdf = pd.read_sql(query, con=db_connection)
@@ -206,3 +209,4 @@ def app():
         details_new = details.rename(columns={'Attribute': 'Info'})
         details_new.dropna(inplace=True)
         st.table(details_new)
+
